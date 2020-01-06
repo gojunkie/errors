@@ -6,16 +6,11 @@ import (
 	"github.com/pkg/errors"
 )
 
-// UnknownCode represents unknown cause of error.
-const UnknownCode = "UNKNOWN_CODE"
+// CodeUnknown represents unknown cause of error.
+const CodeUnknown = "CODE_UNKNOWN"
 
 // ErrorFunc represents a factory function to an error.
 type ErrorFunc func() error
-
-type simpleError struct {
-	err  error
-	code string
-}
 
 type stackTracer interface {
 	StackTrace() errors.StackTrace
@@ -54,7 +49,7 @@ func Wrap(err error, code string) error {
 		return nil
 	}
 
-	return &simpleError{
+	return &wrapError{
 		code: code,
 		err:  errors.WithStack(err),
 	}
@@ -91,36 +86,28 @@ func Cause(err error) error {
 //
 // If the error does not implement Code or the error is nil, UnknownCode will be returned
 func Code(err error) string {
-	code := UnknownCode
+	code := CodeUnknown
 
-	for err != nil {
-		coder, ok := err.(errorCoder)
-		if !ok {
-			break
+	if err != nil {
+		if coder, ok := err.(errorCoder); ok {
+			code = coder.Code()
 		}
-		code = coder.Code()
 	}
 
 	return code
+}
+
+type simpleError struct {
+	err  error
+	code string
 }
 
 func (err *simpleError) Error() string {
 	return err.err.Error()
 }
 
-func (err *simpleError) Cause() error {
-	return errors.Cause(err.err)
-}
-
 func (err *simpleError) Code() string {
 	return err.code
-}
-
-func (err *simpleError) StackTrace() errors.StackTrace {
-	if e, ok := err.err.(stackTracer); ok {
-		return e.StackTrace()[1:]
-	}
-	return nil
 }
 
 func (err *simpleError) Format(s fmt.State, c rune) {
@@ -133,4 +120,47 @@ func (err *simpleError) Format(s fmt.State, c rune) {
 	}
 
 	fmt.Fprintf(s, "%s", err.err)
+}
+
+func (err *simpleError) StackTrace() errors.StackTrace {
+	if e, ok := err.err.(stackTracer); ok {
+		return e.StackTrace()[1:]
+	}
+	return nil
+}
+
+type wrapError struct {
+	err  error
+	code string
+}
+
+func (err *wrapError) Error() string {
+	return err.err.Error()
+}
+
+func (err *wrapError) Cause() error {
+	return errors.Cause(err.err)
+}
+
+func (err *wrapError) Code() string {
+	return err.code
+}
+
+func (err *wrapError) Format(s fmt.State, c rune) {
+	if s.Flag('+') {
+		if c == 'v' {
+			fmt.Fprintf(s, "title=%s, code=%s", err.Error(), err.code)
+			fmt.Fprintf(s, "%+v", err.StackTrace())
+			return
+		}
+	}
+
+	fmt.Fprintf(s, "%s", err.err)
+}
+
+func (err *wrapError) StackTrace() errors.StackTrace {
+	if e, ok := err.err.(stackTracer); ok {
+		return e.StackTrace()[1:]
+	}
+	return nil
 }
