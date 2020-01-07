@@ -80,8 +80,9 @@ func WithContext(err error, ctx interface{}) error {
 	}
 
 	e := &wrapError{
-		code: CodeUnknown,
-		err:  errors.WithStack(err),
+		context: ctx,
+		code:    CodeUnknown,
+		err:     errors.WithStack(err),
 	}
 	if c, ok := err.(errorCoder); ok {
 		e.code = c.Code()
