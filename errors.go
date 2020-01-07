@@ -24,6 +24,10 @@ type errorCoder interface {
 	Code() string
 }
 
+type contextor interface {
+	Context() interface{}
+}
+
 // Func creates and return a factory function.
 func Func(msg, code string) ErrorFunc {
 	return func() error {
@@ -53,6 +57,37 @@ func Wrap(err error, code string) error {
 		code: code,
 		err:  errors.WithStack(err),
 	}
+}
+
+// WithContext annotates err with a context.
+// If err is nill, WithContext return nil.
+// An err value has code if it implements the following
+// interface:
+//
+//	type errorCoder interface {
+//		Code() string
+//	}
+//
+// If the error does not implement Code, UnknownCode will be added to the error.
+func WithContext(err error, ctx interface{}) error {
+	if err == nil {
+		return nil
+	}
+
+	if e, ok := err.(*wrapError); ok {
+		e.context = ctx
+		return e
+	}
+
+	e := &wrapError{
+		code: CodeUnknown,
+		err:  errors.WithStack(err),
+	}
+	if c, ok := err.(errorCoder); ok {
+		e.code = c.Code()
+	}
+
+	return e
 }
 
 // Cause returns the underlying cause of error, if any.
@@ -97,6 +132,22 @@ func Code(err error) string {
 	return code
 }
 
+// Context returns the underlying error context, if any.
+// An error value has a context if it implements the following
+// interface:
+//
+//	type contextor interface {
+//		Code() string
+//	}
+//
+// If the error does not implement Context or the error is nil, nil will be returned.
+func Context(err error) interface{} {
+	if e, ok := err.(contextor); ok {
+		return e.Context()
+	}
+	return nil
+}
+
 type simpleError struct {
 	err  error
 	code string
@@ -130,8 +181,9 @@ func (err *simpleError) StackTrace() errors.StackTrace {
 }
 
 type wrapError struct {
-	err  error
-	code string
+	err     error
+	code    string
+	context interface{}
 }
 
 func (err *wrapError) Error() string {
@@ -144,6 +196,10 @@ func (err *wrapError) Cause() error {
 
 func (err *wrapError) Code() string {
 	return err.code
+}
+
+func (err *wrapError) Context() interface{} {
+	return err.context
 }
 
 func (err *wrapError) Format(s fmt.State, c rune) {
